@@ -28,7 +28,7 @@ from mcp.types import (
 from pydantic import BaseModel
 
 from langchain.agents import create_agent
-from langchain.mcp import MCPAdapter
+from langchain.mcp import MCPAdapter, as_langchain_tool
 from langchain.mcp.elicitation import (
     _arm_for_interrupts,
     _call_tool_with_interrupts,
@@ -116,6 +116,29 @@ async def test_interrupt_carries_the_question_and_resume_completes_the_call() ->
     tool_message = next(message for message in resumed["messages"] if message.type == "tool")
     assert tool_message.content[0]["text"] == "Booked a table for 4."
     assert tool_message.status == "success"
+
+
+@pytest.mark.asyncio
+async def test_tool_converted_after_disconnect_drives_interrupts_on_reconnect() -> None:
+    """The call path follows the negotiated protocol, not the conversion moment."""
+    calls = {"resolver": 0, "body": 0}
+    client = MCPAdapter(_restaurant_server(calls)).client
+
+    async with client:
+        [mcp_tool] = await client.list_tools()
+
+    assert client.protocol_version is None
+    tool = await as_langchain_tool(mcp_tool, client)
+    agent = _agent([tool])
+
+    paused = await agent.ainvoke(
+        {"messages": [{"role": "user", "content": "book"}]},
+        {"configurable": {"thread_id": "disconnected-client"}},
+    )
+
+    [pause] = paused["__interrupt__"]
+    assert pause.value["type"] == "mcp_elicitation"
+    assert calls["body"] == 0
 
 
 @pytest.mark.asyncio

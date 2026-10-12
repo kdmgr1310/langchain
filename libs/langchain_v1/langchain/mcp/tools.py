@@ -278,7 +278,6 @@ async def as_langchain_tool(
         requesting_client = tool_route.client
     else:
         requesting_client = client
-    drives_interrupts = _drives_interrupts(requesting_client)
 
     async def call_tool(
         **arguments: Any,
@@ -286,7 +285,7 @@ async def as_langchain_tool(
         """Call the captured MCP tool and convert its result."""
         result: _ToolCallResult
         async with client:
-            if drives_interrupts:
+            if _drives_interrupts(requesting_client):
                 result = await _call_tool_with_interrupts(client, tool.name, arguments)
             else:
                 # Preserve MCP error results for conversion into failed tool messages.
